@@ -1,0 +1,160 @@
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+import java.util.stream.Collectors;
+
+public class Logic_Locking {
+
+    public static void main(String[] args) {
+        if (args.length != 6) {
+            System.out.println("Usage: java ProgAssign --input <inputFile> --output <outputFile> --keysize <keySize>");
+            return;
+        }
+
+        String inputFile = null;
+        String outputFile = null;
+        int keySize = 0;
+
+        for (int i = 0; i < args.length; i++) {
+            switch (args[i]) {
+                case "--input":
+                    inputFile = args[++i];
+                    break;
+                case "--output":
+                    outputFile = args[++i];
+                    break;
+                case "--keysize":
+                    try {
+                        keySize = Integer.parseInt(args[++i]);
+                        if (keySize % 2 != 0) {
+                            System.out.println("Key size must be an even integer.");
+                            return;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("Invalid key size. Please provide a valid integer.");
+                        return;
+                    }
+                    break;
+                default:
+                    System.out.println("Unknown argument: " + args[i]);
+                    return;
+            }
+        }
+
+        List<String> inputs = new ArrayList<>();
+        List<String> outputs = new ArrayList<>();
+        List<String> gates = new ArrayList<>();
+
+        // Read the input file and categorize the lines
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
+            String item;
+            while ((item = reader.readLine()) != null) {
+                if (item.startsWith("INPUT")) {
+                    inputs.add(item);
+                } else if (item.startsWith("OUTPUT")) {
+                    outputs.add(item);
+                } else if (item.contains("=")) {
+                    gates.add(item);
+                }
+            }
+
+            int inputCounter = inputs.size();
+            int outputCounter = outputs.size();
+            int gateCounter = gates.size();
+
+            System.out.println("Num of Inputs: " + inputCounter);
+            System.out.println("Num of Outputs: " + outputCounter);
+            System.out.println("Num of Gates: " + gateCounter);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        List<String> keyinputs = new ArrayList<>();
+        List<Character> secretKey = new ArrayList<>();
+
+        for (int i = 0; i < keySize; i++) {
+            String keyInputName = "keyinput" + i;
+            inputs.add("INPUT(" + keyInputName + ")");
+            keyinputs.add(keyInputName);
+        }
+
+        List<String> modifiedGates = modifyCircuit(gates, keyinputs, secretKey, keySize);
+
+        // Write the output file with the modified gates and secret key
+        try (PrintWriter writer = new PrintWriter(outputFile)) {
+            // Write the secret key at the top of the file
+            writer.println("# Secret key: " + secretKey.stream().map(Object::toString).collect(Collectors.joining()));
+            writer.println(); // Blank line for separation
+
+            for (String input : inputs) {
+                writer.println(input);
+            }
+            for (String output : outputs) {
+                writer.println(output);
+            }
+            for (String modifiedGate : modifiedGates) {
+                writer.println(modifiedGate);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static List<String> modifyCircuit(List<String> lines, List<String> keyinputs, List<Character> secretKey, int keySize) {
+        List<String> modifiedLines = new ArrayList<>();
+        Random random = new Random();
+        int numXors = keySize / 2;
+        int numXnors = keySize - numXors;
+
+        List<Boolean> gateTypes = new ArrayList<>();
+        for (int i = 0; i < numXors; i++) gateTypes.add(true); // true for XOR
+        for (int i = 0; i < numXnors; i++) gateTypes.add(false); // false for XNOR
+
+        Collections.shuffle(gateTypes, random);
+
+        int keyIndex = 0;
+        int gateTypeIndex = 0;
+        List<Integer> gateIndices = new ArrayList<>();
+
+        while (gateIndices.size() < keySize) {
+            int index = random.nextInt(lines.size());
+            if (!gateIndices.contains(index)) {
+                gateIndices.add(index);
+            }
+        }
+
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+
+            if (gateIndices.contains(i) && keyIndex < keyinputs.size() && gateTypeIndex < gateTypes.size()) {
+                String[] parts = line.split("=");
+                String gateName = parts[0].trim();
+                String expression = parts[1].trim();
+                String modifiedGate;
+
+                if (gateTypes.get(gateTypeIndex)) {
+                    modifiedGate = gateName + " = xor(" + gateName + "_old, " + keyinputs.get(keyIndex) + ")";
+                    secretKey.add('0');
+                } else {
+                    modifiedGate = gateName + " = xnor(" + gateName + "_old, " + keyinputs.get(keyIndex) + ")";
+                    secretKey.add('1');
+                }
+
+                modifiedLines.add(gateName + "_old = " + expression); // Add the original line first
+                modifiedLines.add(modifiedGate); // Add the modified gate line after
+                keyIndex++;
+                gateTypeIndex++;
+            } else {
+                modifiedLines.add(line);
+            }
+        }
+
+        return modifiedLines;
+    }
+}
